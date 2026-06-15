@@ -87,7 +87,10 @@ async function uploadToCloud() {
     const data = await db.exportData();
     const encryptedData = await encryptData(JSON.parse(data), pin);
     
-    let binId = document.getElementById('sync-bin-id').value || localStorage.getItem('tracker_bin_id');
+    // Берем ID только если он точно не "undefined" и не пустой
+    let binId = localStorage.getItem('tracker_bin_id');
+    if (!binId || binId === 'undefined') binId = null;
+    
     let url = 'https://api.jsonbin.io/v3/b';
     let method = 'POST';
 
@@ -106,14 +109,22 @@ async function uploadToCloud() {
       body: JSON.stringify({ data: encryptedData })
     });
 
-    if (!response.ok) throw new Error('Ошибка сервера (проверь Master Key)');
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Сервер отверг запрос (${response.status}). Проверь Master Key! Детали: ${errText}`);
+    }
     
     const result = await response.json();
-    const newBinId = result.metadata ? result.metadata.id : binId;
+    const newBinId = result.metadata?.id || binId;
+
+    if (!newBinId || newBinId === 'undefined') {
+      throw new Error('Сервер не вернул ID записи. Попробуй еще раз.');
+    }
+
     document.getElementById('sync-bin-id').value = newBinId;
     localStorage.setItem('tracker_bin_id', newBinId);
 
-    statusEl.textContent = `✅ Успешно! ID хранилища: ${newBinId}`;
+    statusEl.textContent = `✅ Успешно! ID: ${newBinId}`;
     statusEl.className = 'success';
   } catch (err) {
     statusEl.textContent = '❌ Ошибка: ' + err.message;
@@ -131,8 +142,8 @@ async function downloadFromCloud() {
     statusEl.textContent = '❌ Введи корректный 6-значный пин-код';
     statusEl.className = 'error'; return;
   }
-  if (!apiKey || !binId) {
-    statusEl.textContent = '❌ Введи Master Key и Bin ID (скопируй с устройства, где делал отправку)';
+  if (!apiKey || !binId || binId === 'undefined') {
+    statusEl.textContent = '❌ Сначала выполни успешную отправку с Мака, чтобы получить Bin ID';
     statusEl.className = 'error'; return;
   }
 
@@ -143,7 +154,11 @@ async function downloadFromCloud() {
     const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
       headers: { 'X-Master-Key': apiKey }
     });
-    if (!response.ok) throw new Error('Не найдено в облаке (проверь Bin ID и Key)');
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Не найдено в облаке (${response.status}). Проверь Bin ID и Key. Детали: ${errText}`);
+    }
     
     const result = await response.json();
     const encryptedData = result.record.data;
