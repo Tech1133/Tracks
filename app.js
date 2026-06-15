@@ -295,8 +295,6 @@ function setupEventListeners() {
     document.getElementById('sync-pin').value = localStorage.getItem('tracker_pin') || '';
     document.getElementById('sync-api-key').value = localStorage.getItem('tracker_api_key') || '';
   }
-  const savedBinId = localStorage.getItem('tracker_bin_id');
-  if (savedBinId) document.getElementById('sync-bin-id').value = savedBinId;
 
   document.getElementById('auto-sync-check').addEventListener('change', (e) => {
     localStorage.setItem('tracker_auto_sync', e.target.checked);
