@@ -10,15 +10,24 @@
 </head>
 <body>
   <div class="app">
-        <aside class="sidebar">
+          <aside class="sidebar" id="main-sidebar">
       <div class="logo">🚀 Трекер</div>
       <nav>
         <button class="nav-btn active" data-page="dashboard">🏠 Дашборд</button>
         <button class="nav-btn" data-page="tasks">✅ Задачи</button>
         <button class="nav-btn" data-page="goals">🎯 Цели</button>
-        <button class="nav-btn" data-page="trash">🗑️ Корзина</button> <!-- НОВОЕ -->
+        <button class="nav-btn" data-page="trash">🗑️ Корзина</button>
         <button class="nav-btn" data-page="settings">⚙️ Настройки</button>
       </nav>
+    </aside>
+    
+    <!-- Mobile bottom navigation (hidden by default, shown on mobile) -->
+    <aside class="sidebar mobile-visible" id="mobile-nav" style="display: none;">
+      <button class="nav-btn active" data-page="dashboard">🏠<br><small>Дашборд</small></button>
+      <button class="nav-btn" data-page="tasks">✅<br><small>Задачи</small></button>
+      <button class="nav-btn" data-page="goals">🎯<br><small>Цели</small></button>
+      <button class="nav-btn" data-page="trash">🗑️<br><small>Корзина</small></button>
+      <button class="nav-btn" data-page="settings">⚙️<br><small>Настр.</small></button>
     </aside>
 
     <main class="content">

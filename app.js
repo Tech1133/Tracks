@@ -205,14 +205,39 @@ async function cleanupOldTasks() {
 }
 
 function setupNavigation() {
+  // 1. Функция для показа/скрытия мобильной навигации в зависимости от ширины экрана
+  function updateNavVisibility() {
+    const isMobile = window.innerWidth <= 768;
+    const mobileNav = document.getElementById('mobile-nav');
+    if (mobileNav) {
+      mobileNav.style.display = isMobile ? 'flex' : 'none';
+    }
+  }
+
+  // 2. Вызываем сразу при загрузке и вешаем слушатель на изменение размера окна
+  updateNavVisibility();
+  window.addEventListener('resize', updateNavVisibility);
+
+  // 3. Обработчики кликов для ВСЕХ кнопок навигации (и десктопных, и мобильных)
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const page = btn.dataset.page;
       currentPage = page;
+      
+      // Скрываем все страницы и показываем нужную
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById(page).classList.add('active');
+      const targetPage = document.getElementById(page);
+      if (targetPage) targetPage.classList.add('active');
+      
+      // Убираем активный класс со ВСЕХ кнопок во всех меню
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      
+      // Добавляем активный класс нажатой кнопке И её аналогу в другом меню (чтобы они синхронизировались)
+      document.querySelectorAll(`.nav-btn[data-page="${page}"]`).forEach(b => {
+        b.classList.add('active');
+      });
+      
+      // Загружаем данные для выбранной страницы
       if (page === 'dashboard') loadDashboard();
       if (page === 'tasks') loadTasks();
       if (page === 'goals') loadGoals();
