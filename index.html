@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мой Трекер</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+</head>
+<body>
+  <div class="app">
+        <aside class="sidebar">
+      <div class="logo">🚀 Трекер</div>
+      <nav>
+        <button class="nav-btn active" data-page="dashboard">🏠 Дашборд</button>
+        <button class="nav-btn" data-page="tasks">✅ Задачи</button>
+        <button class="nav-btn" data-page="goals">🎯 Цели</button>
+        <button class="nav-btn" data-page="trash">🗑️ Корзина</button> <!-- НОВОЕ -->
+        <button class="nav-btn" data-page="settings">⚙️ Настройки</button>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <section id="dashboard" class="page active">
+        <h1>Дашборд</h1>
+        <div class="dashboard-grid">
+          <div class="calendar-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <button class="cal-nav-btn" onclick="changeCalendarMonth(-1)">◀</button>
+              <h3 id="calendar-month-year" style="margin:0; font-size: 15px; font-weight: 700;"></h3>
+              <button class="cal-nav-btn" onclick="changeCalendarMonth(1)">▶</button>
+            </div>
+            <div class="calendar-header">
+              <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+            </div>
+            <div id="calendar-days" class="calendar-days"></div>
+          </div>
+          <div class="quick-tasks-card">
+            <h3>🔥 Активные задачи</h3>
+            <div id="dashboard-tasks-list" class="quick-list"></div>
+          </div>
+        </div>
+        <div class="life-goals-section">
+          <h3>🧭 Твой компас: Цели на жизнь</h3>
+          <p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">Сверяй свои ежедневные действия с этими ориентирами.</p>
+          <div class="life-goals-grid" id="life-goals-container"></div>
+        </div>
+      </section>
+
+      <section id="tasks" class="page">
+  <h1>Все задачи</h1>
+  <div id="date-filter-banner" class="filter-banner" style="display: none;">
+    <span>📅 Показаны задачи на: <strong id="filter-date-text"></strong></span>
+    <button class="btn-sm" onclick="clearDateFilter()">✕ Сбросить</button>
+  </div>
+  <div class="form-group">
+    <input type="text" id="task-title" placeholder="Что нужно сделать?" class="input">
+    <textarea id="task-description" placeholder="Описание или заметки (необязательно)..." class="input" style="min-height: 60px;"></textarea>
+    
+    <div class="subtasks-builder">
+      <input type="text" id="new-subtask-input" placeholder="Добавить подзадачу (Enter)..." class="input" style="flex: 1;">
+      <button type="button" class="btn-sm btn-secondary" onclick="addTempSubtask()">+</button>
+    </div>
+    <div id="temp-subtasks-list" class="temp-subtasks-list"></div>
+    
+    <div style="display: flex; gap: 12px;">
+      <input type="date" id="task-date" class="input" style="flex: 1;">
+      <select id="task-priority" class="input" style="flex: 1;">
+        <option value="low">Низкий</option>
+        <option value="medium" selected>Средний</option>
+        <option value="high">Высокий</option>
+      </select>
+    </div>
+    <button id="add-task-btn" class="btn btn-primary">Добавить задачу</button>
+  </div>
+  <div id="tasks-list" class="list"></div>
+</section>
+
+            <section id="goals" class="page">
+        <h1>Все цели</h1>
+        
+        <!-- Сортировка целей -->
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px; gap: 12px; align-items: center;">
+          <span style="font-size: 14px; color: #6b7280;">Сортировать:</span>
+          <select id="goal-sort" class="input" style="padding: 8px; width: 200px;" onchange="loadGoals()">
+            <option value="default">По умолчанию</option>
+            <option value="date">📅 По дате (сначала ближние)</option>
+            <option value="category">🏷️ По типу категории</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <input type="text" id="goal-title" placeholder="Новая цель..." class="input">
+          <div style="display: flex; gap: 12px;">
+            <select id="goal-timeframe" class="input" style="flex: 1;">
+              <option value="week">📆 На неделю</option>
+              <option value="month" selected>🗓️ На месяц</option>
+              <option value="year">📅 На год</option>
+              <option value="longterm">🚀 10 лет / Жизнь</option>
+            </select>
+            <select id="goal-category" class="input" style="flex: 1;">
+              <option value="other" selected>📌 Остальное</option>
+              <option value="finance">💰 Экономические</option>
+              <option value="material">📦 Цели-вещи</option>
+              <option value="personal">🧠 Личное развитие</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <input type="date" id="goal-date" class="input" style="flex: 1;" title="Дедлайн цели">
+          </div>
+          <textarea id="goal-description" placeholder="Подробное описание цели..." class="input"></textarea>
+          <button id="add-goal-btn" class="btn btn-primary">Добавить цель</button>
+        </div>
+        <div id="goals-list" class="list"></div>
+      </section>
+
+      <section id="trash" class="page">
+        <h1>🗑️ Корзина задач</h1>
+        <p style="color: #6b7280; margin-bottom: 20px;">Задачи хранятся здесь 30 дней или до ручной очистки.</p>
+        <div id="trash-list" class="list"></div>
+      </section>
+
+      <section id="settings" class="page">
+        <h1>Настройки и Синхронизация</h1>
+        
+        <div class="settings-section">
+          <h3>🔄 Синхронизация (E2E Шифрование)</h3>
+          <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+            Данные шифруются твоим пин-кодом <b>до</b> отправки. Сервер видит только шифротекст.
+          </p>
+          
+          <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; cursor: pointer; font-weight: 600; color: #2563eb;">
+            <input type="checkbox" id="auto-sync-check" style="width: 18px; height: 18px;">
+            Включить умную автосинхронизацию
+          </label>
+
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <input type="password" id="sync-pin" maxlength="6" pattern="\d{6}" placeholder="6-значный пин-код" class="input" style="text-align: center; font-size: 24px; letter-spacing: 8px;">
+            <input type="text" id="sync-api-key" placeholder="Master Key с jsonbin.io" class="input">
+            <input type="hidden" id="sync-bin-id">
+            
+            <div style="display: flex; gap: 12px;">
+              <button id="btn-sync-upload" class="btn btn-primary" style="flex: 1;">📤 Отправить сейчас</button>
+              <button id="btn-sync-download" class="btn btn-secondary" style="flex: 1; background: #dbeafe; color: #1e40af;">📥 Скачать сейчас</button>
+            </div>
+            <div id="sync-status" style="text-align: center; font-size: 14px; font-weight: 600; min-height: 20px;"></div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>💾 Локальный Экспорт / Импорт</h3>
+          <div style="display: flex; gap: 12px;">
+            <button id="export-btn" class="btn btn-secondary" style="flex: 1;">📥 Скачать JSON</button>
+            <input type="file" id="import-file" accept=".json" style="display: none;">
+            <button id="import-btn" class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('import-file').click()">📤 Загрузить JSON</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО -->
+  <div id="task-modal-overlay" class="modal-overlay" onclick="closeTaskModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Детали задачи</h3>
+        <button class="close-btn" onclick="closeTaskModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-task-id">
+        <label style="font-size: 12px; color: #6b7280; font-weight: 600;">НАЗВАНИЕ</label>
+        <input type="text" id="modal-task-title" class="input" style="margin-bottom: 12px; font-weight: 600;">
+        
+        <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ОПИСАНИЕ</label>
+        <textarea id="modal-task-desc" class="input" style="min-height: 60px; margin-bottom: 12px;"></textarea>
+
+        <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ПОДЗАДАЧИ</label>
+        <div id="modal-subtasks-list" class="modal-subtasks-list" style="margin-bottom: 8px;"></div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="modal-new-subtask" placeholder="Новая подзадача..." class="input" style="flex: 1; padding: 8px;">
+          <button class="btn-sm btn-primary" onclick="addModalSubtask()">+</button>
+        </div>
+        
+        <div style="display: flex; gap: 12px;">
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ДАТА</label>
+            <input type="date" id="modal-task-date" class="input">
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ПРИОРИТЕТ</label>
+            <select id="modal-task-priority" class="input">
+              <option value="low">Низкий</option>
+              <option value="medium">Средний</option>
+              <option value="high">Высокий</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-delete-btn" class="btn btn-secondary" style="background: #fee2e2; color: #dc2626;">🗑 Удалить</button>
+        <button id="modal-complete-btn" class="btn btn-primary" style="background: #10b981;">✅ Готово</button>
+        <button onclick="saveTaskModal()" class="btn btn-primary">💾 Сохранить</button>
+      </div>
+    </div>
+  </div>
+    <!-- МОДАЛЬНОЕ ОКНО ДЛЯ ЦЕЛИ -->
+  <div id="goal-modal-overlay" class="modal-overlay" onclick="closeGoalModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Детали цели</h3>
+        <button class="close-btn" onclick="closeGoalModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modal-goal-id">
+        <label style="font-size: 12px; color: #6b7280; font-weight: 600;">НАЗВАНИЕ</label>
+        <input type="text" id="modal-goal-title" class="input" style="margin-bottom: 12px; font-weight: 600;">
+        
+        <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ПОДРОБНОЕ ОПИСАНИЕ</label>
+        <textarea id="modal-goal-desc" class="input" style="min-height: 120px; margin-bottom: 12px;"></textarea>
+
+        <div style="display: flex; gap: 12px;">
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #6b7280; font-weight: 600;">КАТЕГОРИЯ</label>
+            <select id="modal-goal-category" class="input">
+              <option value="other">📌 Остальное</option>
+              <option value="finance">💰 Экономические</option>
+              <option value="material">📦 Цели-вещи</option>
+              <option value="personal">🧠 Личное развитие</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #6b7280; font-weight: 600;">ДЕДЛАЙН</label>
+            <input type="date" id="modal-goal-date" class="input">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-goal-delete-btn" class="btn btn-secondary" style="background: #fee2e2; color: #dc2626;">🗑 Удалить</button>
+        <button onclick="saveGoalModal()" class="btn btn-primary">💾 Сохранить</button>
+      </div>
+    </div>
+  </div>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
