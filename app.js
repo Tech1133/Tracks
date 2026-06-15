@@ -64,21 +64,38 @@ async function decryptData(base64Str, pin) {
 }
 
 // ==========================================
-// ☁️ СИНХРОНИЗАЦИЯ С JSONBIN
+// ☁️ СИНХРОНИЗАЦИЯ С JSONBIN (С ДИАГНОСТИКОЙ)
 // ==========================================
-// Вспомогательная функция для поиска ID хранилища по имени
+
+// 🔍 Умная функция поиска хранилища по имени с детальной диагностикой
 async function findBinIdByName(apiKey) {
-  const response = await fetch('https://api.jsonbin.io/v3/b', {
-    headers: { 'X-Master-Key': apiKey }
-  });
-  if (!response.ok) throw new Error('Неверный Master Key');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
-  const result = await response.json();
-  const bins = result.record || [];
-  
-  // Ищем хранилище с нашим именем
-  const targetBin = bins.find(b => b.metadata?.name === 'local-tracker-sync');
-  return targetBin ? targetBin.metadata.id : null;
+  try {
+    const response = await fetch('https://api.jsonbin.io/v3/b', {
+      headers: { 'X-Master-Key': apiKey },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    // 🔍 ДИАГНОСТИКА: показываем РЕАЛЬНУЮ причину ошибки
+    if (response.status === 401) throw new Error('401: Ключ не принят. Убедитесь, что это именно Master Key (начинается на $2a$10$), а не Bin Read Key');
+    if (response.status === 403) throw new Error('403: Доступ запрещен. Проверьте права ключа на сайте JSONBin');
+    if (response.status === 429) throw new Error('429: Превышен лимит запросов JSONBin');
+    if (response.status === 500) throw new Error('500: Ошибка сервера JSONBin. Попробуйте позже');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    
+    const result = await response.json();
+    const bins = result.record || [];
+    const targetBin = bins.find(b => b.metadata?.name === 'local-tracker-sync');
+    return targetBin ? targetBin.metadata.id : null;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('Тайм-аут (15 сек). Проверьте интернет');
+    throw err;
+  }
 }
 
 async function uploadToCloud() {
@@ -95,11 +112,11 @@ async function uploadToCloud() {
     statusEl.className = 'error'; return;
   }
 
-  statusEl.textContent = '🔄 Поиск хранилища и шифрование...';
+  statusEl.textContent = '🔄 Поиск хранилища...';
   statusEl.className = 'loading';
 
   try {
-    // 1. Ищем или создаем хранилище
+    // 1. Ищем хранилище по имени
     let binId = await findBinIdByName(apiKey);
     let url = 'https://api.jsonbin.io/v3/b';
     let method = 'POST';
@@ -110,10 +127,12 @@ async function uploadToCloud() {
     }
 
     // 2. Шифруем данные
+    statusEl.textContent = '🔄 Шифрование данных...';
     const data = await db.exportData();
     const encryptedData = await encryptData(JSON.parse(data), pin);
 
-    // 3. Отправляем (с тайм-аутом 20 сек для мобильных)
+    // 3. Отправляем с тайм-аутом 20 сек
+    statusEl.textContent = '🔄 Отправка на сервер...';
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000);
 
@@ -129,12 +148,17 @@ async function uploadToCloud() {
     });
 
     clearTimeout(timeoutId);
-    if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+    
+    // 🔍 Диагностика ошибок
+    if (response.status === 401) throw new Error('401: Ключ не принят');
+    if (response.status === 403) throw new Error('403: Нет прав на запись');
+    if (response.status === 429) throw new Error('429: Лимит запросов исчерпан');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     
     const result = await response.json();
     const finalBinId = result.metadata?.id || binId;
 
-    // Сохраняем в память (на случай если захотим оптимизировать в будущем)
+    // Сохраняем в память
     localStorage.setItem('tracker_bin_id', finalBinId);
     localStorage.setItem('tracker_pin', pin);
     localStorage.setItem('tracker_api_key', apiKey);
@@ -143,11 +167,12 @@ async function uploadToCloud() {
     statusEl.className = 'success';
   } catch (err) {
     if (err.name === 'AbortError') {
-      statusEl.textContent = '❌ Превышено время ожидания. Проверьте интернет.';
+      statusEl.textContent = '❌ Тайм-аут (20 сек). Проверьте интернет.';
     } else {
-      statusEl.textContent = '❌ Ошибка: ' + err.message;
+      statusEl.textContent = '❌ ' + err.message;
     }
     statusEl.className = 'error';
+    console.error('❌ ОШИБКА ОТПРАВКИ:', err);
   }
 }
 
@@ -165,25 +190,34 @@ async function downloadFromCloud() {
     statusEl.className = 'error'; return;
   }
 
-  statusEl.textContent = '🔄 Поиск хранилища и скачивание...';
+  statusEl.textContent = '🔄 Поиск хранилища...';
   statusEl.className = 'loading';
 
   try {
     // 1. Находим хранилище по имени
     const binId = await findBinIdByName(apiKey);
-    if (!binId) throw new Error('Хранилище не найдено. Сначала отправьте данные с другого устройства.');
+    if (!binId) throw new Error('Хранилище не найдено. Сначала нажмите "Отправить" на другом устройстве.');
 
-    // 2. Скачиваем
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-      headers: { 'X-Master-Key': apiKey }
-    });
-    if (!response.ok) throw new Error('Не удалось скачать данные');
+    // 2. Скачиваем с тайм-аутом
+    statusEl.textContent = '🔄 Скачивание данных...';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
     
-    const result = await response.json();
-    const encryptedData = result.record.data;
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+      headers: { 'X-Master-Key': apiKey },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.status === 401) throw new Error('401: Ключ не принят');
+    if (response.status === 404) throw new Error('404: Данные не найдены в облаке');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
     // 3. Расшифровываем и применяем
-    const decryptedData = await decryptData(encryptedData, pin);
+    statusEl.textContent = '🔄 Расшифровка...';
+    const result = await response.json();
+    const decryptedData = await decryptData(result.record.data, pin);
     await db.importData(JSON.stringify(decryptedData));
     
     statusEl.textContent = '✅ Данные успешно загружены!';
@@ -194,10 +228,16 @@ async function downloadFromCloud() {
       statusEl.textContent = '';
     }, 2000);
   } catch (err) {
-    statusEl.textContent = '❌ Ошибка: ' + err.message;
+    if (err.name === 'AbortError') {
+      statusEl.textContent = '❌ Тайм-аут (20 сек). Проверьте интернет.';
+    } else {
+      statusEl.textContent = '❌ ' + err.message;
+    }
     statusEl.className = 'error';
+    console.error('❌ ОШИБКА СКАЧИВАНИЯ:', err);
   }
 }
+
 // ==========================================
 // ОСНОВНАЯ ЛОГИКА
 // ==========================================
@@ -239,7 +279,6 @@ async function cleanupOldTasks() {
 }
 
 function setupNavigation() {
-  // 1. Функция для показа/скрытия мобильной навигации в зависимости от ширины экрана
   function updateNavVisibility() {
     const isMobile = window.innerWidth <= 768;
     const mobileNav = document.getElementById('mobile-nav');
@@ -248,30 +287,23 @@ function setupNavigation() {
     }
   }
 
-  // 2. Вызываем сразу при загрузке и вешаем слушатель на изменение размера окна
   updateNavVisibility();
   window.addEventListener('resize', updateNavVisibility);
 
-  // 3. Обработчики кликов для ВСЕХ кнопок навигации (и десктопных, и мобильных)
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const page = btn.dataset.page;
       currentPage = page;
       
-      // Скрываем все страницы и показываем нужную
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       const targetPage = document.getElementById(page);
       if (targetPage) targetPage.classList.add('active');
       
-      // Убираем активный класс со ВСЕХ кнопок во всех меню
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      
-      // Добавляем активный класс нажатой кнопке И её аналогу в другом меню (чтобы они синхронизировались)
       document.querySelectorAll(`.nav-btn[data-page="${page}"]`).forEach(b => {
         b.classList.add('active');
       });
       
-      // Загружаем данные для выбранной страницы
       if (page === 'dashboard') loadDashboard();
       if (page === 'tasks') loadTasks();
       if (page === 'goals') loadGoals();
@@ -288,7 +320,6 @@ function setupEventListeners() {
   document.getElementById('btn-sync-upload').addEventListener('click', uploadToCloud);
   document.getElementById('btn-sync-download').addEventListener('click', downloadFromCloud);
   
-  // Восстановление настроек автосинхронизации
   const autoSync = localStorage.getItem('tracker_auto_sync') === 'true';
   document.getElementById('auto-sync-check').checked = autoSync;
   if (autoSync) {
@@ -312,16 +343,29 @@ function setupEventListeners() {
 }
 
 // ==========================================
-// 🤖 УМНАЯ АВТОСИНХРОНИЗАЦИЯ (ФОНОВЫЙ РЕЖИМ)
+// 🤖 УМНАЯ АВТОСИНХРОНИЗАЦИЯ (С ПОИСКОМ ПО ИМЕНИ)
 // ==========================================
 async function triggerAutoSync() {
   if (localStorage.getItem('tracker_auto_sync') !== 'true') return;
   
   const pin = localStorage.getItem('tracker_pin');
   const apiKey = localStorage.getItem('tracker_api_key');
-  const binId = localStorage.getItem('tracker_bin_id');
+  let binId = localStorage.getItem('tracker_bin_id');
   
-  if (!pin || !apiKey || !binId) return; // Если настройки не полные, не синхронизируем
+  if (!pin || !apiKey) return;
+  
+  // Если binId пропал (iOS стерла), ищем по имени
+  if (!binId) {
+    try {
+      binId = await findBinIdByName(apiKey);
+      if (binId) localStorage.setItem('tracker_bin_id', binId);
+    } catch (e) {
+      console.warn('⚠️ Автосинхронизация: не удалось найти хранилище:', e.message);
+      return;
+    }
+  }
+  
+  if (!binId) return;
 
   try {
     const data = await db.exportData();
@@ -337,33 +381,48 @@ async function triggerAutoSync() {
     });
     console.log('✅ Автосинхронизация (отправка) выполнена');
   } catch (err) {
-    console.error('Ошибка автосинхронизации:', err);
+    console.error('Ошибка автосинхронизации:', err.message);
   }
 }
 
-// Слушаем момент, когда пользователь открывает приложение (например, на телефоне)
+// Слушаем момент, когда пользователь открывает приложение
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && localStorage.getItem('tracker_auto_sync') === 'true') {
     const pin = localStorage.getItem('tracker_pin');
     const apiKey = localStorage.getItem('tracker_api_key');
-    const binId = localStorage.getItem('tracker_bin_id');
+    let binId = localStorage.getItem('tracker_bin_id');
     
-    if (pin && apiKey && binId) {
-      console.log('🔄 Проверка обновлений при открытии...');
+    if (!pin || !apiKey) return;
+    
+    // Если binId пропал, ищем по имени
+    if (!binId) {
       try {
-        const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-          headers: { 'X-Master-Key': apiKey }
-        });
-        if (response.ok) {
-          const result = await response.json();
-          const decryptedData = await decryptData(result.record.data, pin);
-          await db.importData(JSON.stringify(decryptedData));
-          loadDashboard(); // Обновляем экран свежими данными
-          console.log('✅ Автосинхронизация (загрузка) выполнена');
-        }
-      } catch (err) {
-        console.error('Ошибка фоновой загрузки:', err);
+        binId = await findBinIdByName(apiKey);
+        if (binId) localStorage.setItem('tracker_bin_id', binId);
+      } catch (e) {
+        return;
       }
+    }
+    
+    if (!binId) return;
+
+    try {
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+        headers: { 'X-Master-Key': apiKey }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        const decryptedData = await decryptData(result.record.data, pin);
+        await db.importData(JSON.stringify(decryptedData));
+        
+        if (currentPage === 'dashboard') loadDashboard();
+        else if (currentPage === 'tasks') loadTasks();
+        else if (currentPage === 'goals') loadGoals();
+        
+        console.log('✅ Автосинхронизация (загрузка) выполнена');
+      }
+    } catch (err) {
+      console.error('Ошибка фоновой загрузки:', err.message);
     }
   }
 });
@@ -697,10 +756,7 @@ async function deleteTask(id) {
   if (task) { 
     task.status = 'deleted'; 
     await db.update('tasks', task); 
-    
-    // === ДОБАВЛЯЕМ ЭТУ СТРОКУ ДЛЯ АВТОСИНХРОНИЗАЦИИ ===
-    triggerAutoSync(); 
-    // ====================================================
+    triggerAutoSync();
   }
   
   if (currentPage === 'tasks') await loadTasks(); 
