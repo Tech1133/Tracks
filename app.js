@@ -68,16 +68,35 @@ async function decryptData(base64Str, pin) {
 // ==========================================
 
 // 🔍 Умная функция поиска хранилища по имени с детальной диагностикой
+// 🔍 Исправленная функция поиска хранилища (правильный endpoint)
 async function findBinIdByName(apiKey) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   try {
-    const response = await fetch('https://api.jsonbin.io/v3/b', {
+    // ✅ ПРАВИЛЬНЫЙ ENDPOINT: /v3/b/recent (а не /v3/b)
+    const response = await fetch('https://api.jsonbin.io/v3/b/recent', {
       headers: { 'X-Master-Key': apiKey },
       signal: controller.signal
     });
     
+    clearTimeout(timeoutId);
+    
+    if (response.status === 401) throw new Error('401: Ключ не принят. Убедитесь, что это Master Key');
+    if (response.status === 403) throw new Error('403: Доступ запрещен');
+    if (response.status === 429) throw new Error('429: Лимит запросов исчерпан');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    
+    const result = await response.json();
+    const bins = result.record || [];
+    const targetBin = bins.find(b => b.metadata?.name === 'local-tracker-sync');
+    return targetBin ? targetBin.metadata.id : null;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('Тайм-аут (15 сек). Проверьте интернет');
+    throw err;
+  }
+}    
     clearTimeout(timeoutId);
     
     // 🔍 ДИАГНОСТИКА: показываем РЕАЛЬНУЮ причину ошибки
