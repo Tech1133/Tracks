@@ -1,5 +1,5 @@
 // === ГЛАВНОЕ ПРАВИЛО: МЕНЯЙ ЭТУ ЦИФРУ ПРИ КАЖДОМ ОБНОВЛЕНИИ КОДА! ===
-const APP_VERSION = 'v18'; 
+const APP_VERSION = 'v189'; 
 const CACHE_NAME = `tracker-offline-${APP_VERSION}`;
 
 const ASSETS = [
