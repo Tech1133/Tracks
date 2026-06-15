@@ -66,6 +66,21 @@ async function decryptData(base64Str, pin) {
 // ==========================================
 // ☁️ СИНХРОНИЗАЦИЯ С JSONBIN
 // ==========================================
+// Вспомогательная функция для поиска ID хранилища по имени
+async function findBinIdByName(apiKey) {
+  const response = await fetch('https://api.jsonbin.io/v3/b', {
+    headers: { 'X-Master-Key': apiKey }
+  });
+  if (!response.ok) throw new Error('Неверный Master Key');
+  
+  const result = await response.json();
+  const bins = result.record || [];
+  
+  // Ищем хранилище с нашим именем
+  const targetBin = bins.find(b => b.metadata?.name === 'local-tracker-sync');
+  return targetBin ? targetBin.metadata.id : null;
+}
+
 async function uploadToCloud() {
   const pin = document.getElementById('sync-pin').value;
   const apiKey = document.getElementById('sync-api-key').value.trim();
@@ -76,21 +91,16 @@ async function uploadToCloud() {
     statusEl.className = 'error'; return;
   }
   if (!apiKey) {
-    statusEl.textContent = '❌ Введи Master Key с jsonbin.io';
+    statusEl.textContent = '❌ Введи Master Key';
     statusEl.className = 'error'; return;
   }
 
-  statusEl.textContent = '🔄 Шифрование и отправка...';
+  statusEl.textContent = '🔄 Поиск хранилища и шифрование...';
   statusEl.className = 'loading';
 
   try {
-    const data = await db.exportData();
-    const dataObj = JSON.parse(data);
-    const encryptedData = await encryptData(dataObj, pin);
-    
-    let binId = localStorage.getItem('tracker_bin_id');
-    if (!binId || binId === 'undefined') binId = null;
-    
+    // 1. Ищем или создаем хранилище
+    let binId = await findBinIdByName(apiKey);
     let url = 'https://api.jsonbin.io/v3/b';
     let method = 'POST';
 
@@ -99,9 +109,13 @@ async function uploadToCloud() {
       method = 'PUT';
     }
 
-    // 🛡️ ДОБАВЛЯЕМ ТАЙМ-АУТ 10 СЕКУНД ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ
+    // 2. Шифруем данные
+    const data = await db.exportData();
+    const encryptedData = await encryptData(JSON.parse(data), pin);
+
+    // 3. Отправляем (с тайм-аутом 20 сек для мобильных)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     const response = await fetch(url, {
       method: method,
@@ -111,31 +125,21 @@ async function uploadToCloud() {
         'X-Bin-Name': 'local-tracker-sync'
       },
       body: JSON.stringify({ data: encryptedData }),
-      signal: controller.signal // Привязываем тайм-аут к запросу
+      signal: controller.signal
     });
 
-    clearTimeout(timeoutId); // Если успели, отменяем таймер
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      throw new Error(`Сервер отверг запрос (${response.status}). Проверь ключи.`);
-    }
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
     
-    const result = JSON.parse(responseText);
-    const newBinId = result.metadata?.id || binId;
+    const result = await response.json();
+    const finalBinId = result.metadata?.id || binId;
 
-    if (!newBinId || newBinId === 'undefined') {
-      throw new Error('Сервер не вернул ID записи.');
-    }
-
-    document.getElementById('sync-bin-id').value = newBinId;
-    localStorage.setItem('tracker_bin_id', newBinId);
-    // Сохраняем ключи при успешной отправке, чтобы iOS не теряла их
+    // Сохраняем в память (на случай если захотим оптимизировать в будущем)
+    localStorage.setItem('tracker_bin_id', finalBinId);
     localStorage.setItem('tracker_pin', pin);
     localStorage.setItem('tracker_api_key', apiKey);
 
-    statusEl.textContent = `✅ Успешно! ID: ${newBinId}`;
+    statusEl.textContent = '✅ Успешно синхронизировано!';
     statusEl.className = 'success';
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -144,44 +148,45 @@ async function uploadToCloud() {
       statusEl.textContent = '❌ Ошибка: ' + err.message;
     }
     statusEl.className = 'error';
-    console.error('Ошибка отправки:', err);
   }
 }
+
 async function downloadFromCloud() {
   const pin = document.getElementById('sync-pin').value;
   const apiKey = document.getElementById('sync-api-key').value.trim();
-  let binId = document.getElementById('sync-bin-id').value || localStorage.getItem('tracker_bin_id');
   const statusEl = document.getElementById('sync-status');
 
   if (pin.length !== 6 || !/^\d+$/.test(pin)) {
     statusEl.textContent = '❌ Введи корректный 6-значный пин-код';
     statusEl.className = 'error'; return;
   }
-  if (!apiKey || !binId || binId === 'undefined') {
-    statusEl.textContent = '❌ Сначала выполни успешную отправку с Мака, чтобы получить Bin ID';
+  if (!apiKey) {
+    statusEl.textContent = '❌ Введи Master Key';
     statusEl.className = 'error'; return;
   }
 
-  statusEl.textContent = '🔄 Скачивание и расшифровка...';
+  statusEl.textContent = '🔄 Поиск хранилища и скачивание...';
   statusEl.className = 'loading';
 
   try {
+    // 1. Находим хранилище по имени
+    const binId = await findBinIdByName(apiKey);
+    if (!binId) throw new Error('Хранилище не найдено. Сначала отправьте данные с другого устройства.');
+
+    // 2. Скачиваем
     const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
       headers: { 'X-Master-Key': apiKey }
     });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Не найдено в облаке (${response.status}). Проверь Bin ID и Key. Детали: ${errText}`);
-    }
+    if (!response.ok) throw new Error('Не удалось скачать данные');
     
     const result = await response.json();
     const encryptedData = result.record.data;
     
+    // 3. Расшифровываем и применяем
     const decryptedData = await decryptData(encryptedData, pin);
     await db.importData(JSON.stringify(decryptedData));
     
-    statusEl.textContent = '✅ Данные успешно расшифрованы и загружены!';
+    statusEl.textContent = '✅ Данные успешно загружены!';
     statusEl.className = 'success';
     
     setTimeout(() => {
@@ -193,7 +198,6 @@ async function downloadFromCloud() {
     statusEl.className = 'error';
   }
 }
-
 // ==========================================
 // ОСНОВНАЯ ЛОГИКА
 // ==========================================
