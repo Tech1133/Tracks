@@ -85,9 +85,9 @@ async function uploadToCloud() {
 
   try {
     const data = await db.exportData();
-    const encryptedData = await encryptData(JSON.parse(data), pin);
+    const dataObj = JSON.parse(data);
+    const encryptedData = await encryptData(dataObj, pin);
     
-    // Берем ID только если он точно не "undefined" и не пустой
     let binId = localStorage.getItem('tracker_bin_id');
     if (!binId || binId === 'undefined') binId = null;
     
@@ -99,6 +99,10 @@ async function uploadToCloud() {
       method = 'PUT';
     }
 
+    // 🛡️ ДОБАВЛЯЕМ ТАЙМ-АУТ 10 СЕКУНД ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(url, {
       method: method,
       headers: {
@@ -106,32 +110,43 @@ async function uploadToCloud() {
         'X-Master-Key': apiKey,
         'X-Bin-Name': 'local-tracker-sync'
       },
-      body: JSON.stringify({ data: encryptedData })
+      body: JSON.stringify({ data: encryptedData }),
+      signal: controller.signal // Привязываем тайм-аут к запросу
     });
 
+    clearTimeout(timeoutId); // Если успели, отменяем таймер
+
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Сервер отверг запрос (${response.status}). Проверь Master Key! Детали: ${errText}`);
+      throw new Error(`Сервер отверг запрос (${response.status}). Проверь ключи.`);
     }
     
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     const newBinId = result.metadata?.id || binId;
 
     if (!newBinId || newBinId === 'undefined') {
-      throw new Error('Сервер не вернул ID записи. Попробуй еще раз.');
+      throw new Error('Сервер не вернул ID записи.');
     }
 
     document.getElementById('sync-bin-id').value = newBinId;
     localStorage.setItem('tracker_bin_id', newBinId);
+    // Сохраняем ключи при успешной отправке, чтобы iOS не теряла их
+    localStorage.setItem('tracker_pin', pin);
+    localStorage.setItem('tracker_api_key', apiKey);
 
     statusEl.textContent = `✅ Успешно! ID: ${newBinId}`;
     statusEl.className = 'success';
   } catch (err) {
-    statusEl.textContent = '❌ Ошибка: ' + err.message;
+    if (err.name === 'AbortError') {
+      statusEl.textContent = '❌ Превышено время ожидания. Проверьте интернет.';
+    } else {
+      statusEl.textContent = '❌ Ошибка: ' + err.message;
+    }
     statusEl.className = 'error';
+    console.error('Ошибка отправки:', err);
   }
 }
-
 async function downloadFromCloud() {
   const pin = document.getElementById('sync-pin').value;
   const apiKey = document.getElementById('sync-api-key').value.trim();
